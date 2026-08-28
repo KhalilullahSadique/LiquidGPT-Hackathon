@@ -100,7 +100,7 @@ a hackathon project.
 ## The built-in persona
 
 Ask "who is Khalil?", "who is Khalilullah Sediq / Sadique / Durrani?", or "who built you?"
-and the assistant answers with real information about the developer.
+and the assistant answers with real information about the engineer who built it.
 
 This is a **system prompt** (`api/_persona.js`), not a fine-tuned model — an instruction
 prepended to every conversation server-side. Two honest caveats:
