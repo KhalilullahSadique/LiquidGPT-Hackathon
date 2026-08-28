@@ -270,7 +270,7 @@ const ChatContainer = () => {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
                   Developed by{" "}
                   <span className="font-semibold text-blue-600 dark:text-blue-400">
-                    QuettaCoders
+                    Khalilullah Sediq
                   </span>
                 </p>
               </div>

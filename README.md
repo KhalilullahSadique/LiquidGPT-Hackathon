@@ -1,6 +1,6 @@
 # LiquidGPT
 
-A ChatGPT-style AI chat app built for the SMIT Hackathon by **QuettaCoders**.
+A ChatGPT-style AI chat app built for the SMIT Hackathon by **Khalilullah Sediq**.
 
 React 19 · Vite 7 · Tailwind CSS v4 · Serverless API proxy · Markdown rendering with
 syntax highlighting · Multi-conversation history · Dark mode · Automatic model fallback
@@ -99,7 +99,7 @@ a hackathon project.
 
 ## The built-in persona
 
-Ask "who is Khalil?", "who is Khalilullah Sadique / Sediq / Durrani?", or "who built you?"
+Ask "who is Khalil?", "who is Khalilullah Sediq / Sadique / Durrani?", or "who built you?"
 and the assistant answers with real information about the developer.
 
 This is a **system prompt** (`api/_persona.js`), not a fine-tuned model — an instruction
@@ -145,4 +145,4 @@ same handler that Vercel runs in production.
 
 ## Credits
 
-Built by **QuettaCoders**. AI assistance was used in parts of this project.
+Built by **Khalilullah Sediq**. AI assistance was used in parts of this project.

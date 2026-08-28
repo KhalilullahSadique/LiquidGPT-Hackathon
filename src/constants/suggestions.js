@@ -8,7 +8,7 @@
 export const SUGGESTIONS = [
   "Who is Khalil?",
   "Who built you?",
-  "What does Khalilullah Sadique work with?",
+  "What does Khalilullah Sediq work with?",
   "What projects has Khalil built?",
   "Explain closures in JavaScript with an example",
   "Write a Python script to rename files in a folder",
