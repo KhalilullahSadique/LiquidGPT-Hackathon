@@ -120,8 +120,14 @@ Two invariants worth preserving:
 `api/_persona.js` is a **system prompt**, not a fine-tuned model. It lives server-side so it
 is always applied, cannot be stripped by editing client state, and is never persisted into
 `localStorage`. `api/chat.js` strips any client-supplied `system` messages before
-prepending it. Facts about the developer must be sourced, not inferred — the prompt
-explicitly forbids the model from guessing a location or any detail it does not list.
+prepending it.
+
+Facts about the engineer who built this must be **sourced, not inferred**. This rule exists
+because it was broken: "based in Quetta, Balochistan, Pakistan" was inferred from an old
+team name and was simply wrong. The prompt now forbids the model from guessing a location
+or any detail it does not list, and forbids crediting the app to a team. If you add a fact,
+it must come from him or from his portfolio — never from a plausible-looking signal in the
+repo.
 
 ## Conventions
 
@@ -141,6 +147,35 @@ explicitly forbids the model from guessing a location or any detail it does not 
   indistinguishable from inline code. Syntax highlighting uses `PrismLight` with explicitly
   registered languages; importing full `Prism` pulls ~290 languages and roughly doubles the
   bundle.
+
+## Deploying — traps that are invisible from the code
+
+The repo is git-connected to the Vercel project, so **a push to `main` auto-deploys**. Use
+`vercel deploy --prod --yes` when you need a deploy without a commit (e.g. after changing
+an environment variable, which never affects an existing deployment).
+
+**`vercel link` silently breaks `.gitignore`.** It appends a broad `.env*` rule to the end
+of the file. That lands *after* `!.env.example`, and the last matching pattern wins, so the
+committed template gets re-ignored. After running any `vercel link` / `vercel env pull`,
+re-check:
+
+```bash
+git check-ignore -v .env .env.local .env.example   # .env.example must NOT be ignored
+```
+
+**Do not put an Application/HTTP-referrer restriction on the Gemini key.** This reverses
+the usual advice and the usual advice is wrong here: referrer restrictions only work for
+calls made from a browser, and this key is used by a serverless function, which sends no
+referrer. A website restriction blocks 100% of production traffic. Restrict the key by
+**API** (Generative Language API only) and let the proxy handle origin control.
+
+**`git push` fails with `could not read Username for 'https://github.com'`.** The remote is
+HTTPS but `gh` is configured with `git_protocol = ssh`, and no credential helper is set.
+Push with gh's token without permanently changing git config:
+
+```bash
+git -c credential.helper='!gh auth git-credential' push origin main
+```
 
 ## Verifying a change
 
