@@ -9,8 +9,14 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const MAX_ATTEMPTS_PER_MODEL = 3;
 const BASE_BACKOFF_MS = 600;
 
-/** Transient server-side conditions. Worth retrying the SAME model. */
-const RETRYABLE_STATUSES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
+/**
+ * Transient server-side conditions worth retrying the SAME model.
+ *
+ * 429 is deliberately absent. Free-tier quota is metered per model, so when one is
+ * exhausted, waiting on it is pointless — falling straight through to the next model in
+ * the chain reaches a fresh allowance immediately instead of burning seconds on backoff.
+ */
+const RETRYABLE_STATUSES = new Set([408, 409, 425, 500, 502, 503, 504]);
 
 export class ChatError extends Error {
   constructor(message, { status = null, kind = "unknown", code = null, cause = null } = {}) {

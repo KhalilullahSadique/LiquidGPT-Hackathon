@@ -48,7 +48,8 @@ Three changes fix that permanently:
 
 1. **Stable model IDs only, verified with a real request.** No `:free` suffixes, no
    `-preview` IDs (two weeks' notice before removal), no `-latest` aliases (swapped
-   underneath you). The default is `gemini-3.6-flash`.
+   underneath you). The default is `gemini-3.5-flash-lite` — measured at ~1s, where
+   `gemini-3.6-flash` takes ~13s on the same question because it does extended thinking.
 
    Worth knowing: `gemini-2.5-flash`, `-flash-lite` and `-pro` still appear in Google's
    `GET /v1beta/openai/models` listing and are still priced "Free of charge" on the
@@ -56,11 +57,16 @@ Three changes fix that permanently:
    `404 - no longer available to new users`. A model listing is not proof of usability;
    only a real request is. Every ID in `src/constants/models.js` was confirmed by an
    actual call.
-2. **A fallback chain across two providers** (`src/constants/models.js`). If the selected
-   model fails, `src/utils/api.js` walks the rest of the chain and the reply is labelled
-   with whichever model actually answered.
-3. **Retries with backoff** on rate limits and server errors, a 60-second timeout, and a
-   Stop button — instead of hanging on "Thinking…" forever.
+2. **A four-hop fallback chain across two providers** (`src/constants/models.js`). If the
+   selected model fails, `src/utils/api.js` walks the rest of the chain and the reply is
+   labelled with whichever model actually answered. This matters more than it sounds:
+   Gemini meters free-tier quota **per model**, so every hop is a fresh allowance. Google's
+   own 429 names the cap — `limit: 20` for `gemini-3.6-flash`. One model running dry no
+   longer ends the conversation.
+3. **Retries with backoff** on transient server errors, a 60-second timeout, and a Stop
+   button — instead of hanging on "Thinking…" forever. A 429 skips the backoff entirely
+   and falls straight through to the next model, because a spent per-model quota does not
+   refill while you wait.
 
 ## How the API key stays secret
 
