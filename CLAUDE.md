@@ -59,6 +59,10 @@ dev runs the *same handler* Vercel runs. Vercel pre-parses JSON into `req.body` 
 connect middleware does not — `readJsonBody()` in `api/chat.js` handles both. Keep it that
 way when editing the handler.
 
+A **new server-side env var must also be added to `SERVER_ONLY_KEYS` in `vite.config.js`**, or
+it is `undefined` in dev while working fine on Vercel — a divergence that reads as a code bug
+until you know to look for it.
+
 ### Model IDs — hard-won constraints
 
 Do not add a model ID without confirming it with a **real authenticated request**.
@@ -98,10 +102,35 @@ that array falls through on rate limits and downtime, but a model ID that no lon
 `gemini-3.6-flash` takes ~13s on a persona question (extended thinking) and has timed out;
 Flash-Lite answers in ~1s. The default is chosen on measured latency, not model size.
 
+### Errors and how they reach the UI
+
+Error text is translated **at render time, not at throw time**, which is why the chain looks
+indirect:
+
+`ChatError` (`src/utils/api.js`) carries an English `message` *and* a `messageKey` /
+`messageParams`. `useChat` puts the **error object** into state rather than a flattened string.
+`ChatContainer.describeError()` turns it into text with `t()` at render.
+
+Three consequences worth knowing before "simplifying" it:
+
+- Switching language retranslates an error already on screen. A string baked at throw time
+  could not.
+- `src/utils/api.js` stays pure and stateless — no module-level `setLocale()` to sequence.
+- **A null `messageKey` means "render `message` verbatim."** That is deliberate for text a
+  provider sent us: translating an upstream message would misreport what the server said.
+
+`error.allFailed` carries `lastError`, and `describeError` recurses once into it, so the
+"all N models failed" sentence does not end in an English clause inside a Russian UI.
+
 ### Interface language
 
-English and Russian, with no i18n dependency — `src/i18n/` is ~150 lines against the ~45 KB
-that react-i18next would have added to an already 460 KB single chunk.
+English and Russian, with no i18n dependency — `src/i18n/` is ~400 lines against the ~45 KB
+that react-i18next would have added to an already ~463 KB single chunk.
+
+The module is deliberately split five ways (`locales` / `translate` / dictionaries /
+`LanguageContext` / `LanguageProvider`). Keep components and non-components in separate files:
+`react-refresh/only-export-components` is enabled via `reactRefresh.configs.vite`, so never add
+a non-component export to `LanguageProvider.jsx`.
 
 Adding a locale touches **four** places, and the fourth is the one that gets missed because it
 is invisible from the JS:
@@ -175,7 +204,12 @@ repo.
   lazy `useState` initialiser for mount-time reads, and explicit commit helpers called from
   event handlers for writes. `commitMessages` in `ChatContainer` is the pattern.
 - ESLint config is split: `src/**` gets browser globals and the React rules; `api/**`,
-  `vite.config.js` and `eslint.config.js` get Node globals and no React rules.
+  `vite.config.js` and `eslint.config.js` get Node globals and no React rules. Anything outside
+  those globs — a new top-level `scripts/`, any `.ts` — is simply **not linted**.
+- **A bound `catch` parameter is a lint error.** `no-unused-vars` is configured with only
+  `varsIgnorePattern`, so ESLint 9's default `caughtErrors: "all"` applies. Every `try` around
+  `localStorage` uses a bare `catch {` with a comment explaining the degraded behaviour; match
+  that rather than binding an error you do not use.
 - Tailwind v4. `bg-opacity-*` and `focus:outline-none` changed meaning from v3 — use
   `bg-black/50` and `focus:outline-hidden` + `focus-visible:ring-*`.
 - The inline script in `index.html` resolves **both** the theme and the language before first
@@ -190,6 +224,10 @@ repo.
   indistinguishable from inline code. Syntax highlighting uses `PrismLight` with explicitly
   registered languages; importing full `Prism` pulls ~290 languages and roughly doubles the
   bundle.
+- The app builds to a **single ~463 KB chunk** with no code splitting, against Vite's 500 KB
+  warning threshold. If it crosses, `react-syntax-highlighter` is the thing to split — not the
+  locale dictionaries, which are eagerly imported on purpose so a language switch is instant
+  and the pre-paint guarantee holds.
 
 ## Deploying — traps that are invisible from the code
 
