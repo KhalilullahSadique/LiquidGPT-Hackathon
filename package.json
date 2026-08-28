@@ -1,10 +1,13 @@
 {
   "name": "liquidgpt",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "A multi-model AI chat app built with React, Vite and Tailwind CSS.",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:host": "vite --host",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

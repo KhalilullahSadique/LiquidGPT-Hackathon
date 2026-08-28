@@ -1,6 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ModelSelector from "./ModelSelector";
-import logo from "../assets/logo.jfif";
 
 const ChatHeader = ({
   selectedModel,
@@ -9,38 +8,42 @@ const ChatHeader = ({
   onNewChat,
   onToggleSidebar,
   disabled,
+  canClear,
   children,
 }) => {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const dialogRef = useRef(null);
 
-  const handleClearChat = () => {
-    setShowConfirmDialog(true);
-  };
+  // A native <dialog> in modal mode gives us the four things the old div overlay lacked:
+  // a focus trap, Escape to close, an inert background, and focus returned to the trigger.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (showConfirmDialog && !dialog.open) dialog.showModal();
+    if (!showConfirmDialog && dialog.open) dialog.close();
+  }, [showConfirmDialog]);
 
   const confirmClearChat = () => {
     onClearChat();
     setShowConfirmDialog(false);
   };
 
-  const cancelClearChat = () => {
-    setShowConfirmDialog(false);
-  };
-
   return (
     <>
-      <div className="border-b border-gray-200 dark:border-[var(--border-primary)] bg-white dark:bg-[var(--bg-secondary)] px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            {/* Sidebar toggle button (visible on all screens) */}
+      <header className="border-b border-gray-200 dark:border-[var(--border-primary)] bg-white dark:bg-[var(--bg-secondary)] px-4 py-3">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
               onClick={onToggleSidebar}
-              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label="Toggle sidebar"
+              className="p-2 cursor-pointer rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
             >
               <svg
-                className="custom-b w-6 h-6"
+                className="w-6 h-6"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -51,30 +54,29 @@ const ChatHeader = ({
               </svg>
             </button>
 
-            <h1 className="custom-b text-xl font-semibold text-gray-900 dark:text-gray-100 hidden sm:block">
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 hidden sm:block">
               LiquidGPT
             </h1>
 
             <ModelSelector
-              className="custom-b "
               selectedModel={selectedModel}
               onModelChange={onModelChange}
               disabled={disabled}
             />
           </div>
 
-          <div className="custom-b flex items-center space-x-2 sm:space-x-3">
-            {/* New Chat button */}
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={onNewChat}
               disabled={disabled}
-              className="hidden sm:flex items-center px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="hidden sm:flex items-center px-3 py-1.5 cursor-pointer text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <svg
                 className="w-4 h-4 mr-1"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -86,17 +88,18 @@ const ChatHeader = ({
               New Chat
             </button>
 
-            {/* Mobile New Chat Icon */}
             <button
               onClick={onNewChat}
               disabled={disabled}
-              className="sm:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              aria-label="New chat"
+              className="sm:hidden p-2 cursor-pointer rounded-lg text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-hidden focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
             >
               <svg
                 className="w-6 h-6"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -107,48 +110,47 @@ const ChatHeader = ({
               </svg>
             </button>
 
-            {/* Dark mode toggle */}
             <div className="flex items-center">{children}</div>
 
-            {/* Clear Chat button */}
             <button
-              onClick={handleClearChat}
-              disabled={disabled}
-              className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              onClick={() => setShowConfirmDialog(true)}
+              disabled={disabled || !canClear}
+              className="px-3 py-1.5 cursor-pointer text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              Clear Chat
+              Delete Chat
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {showConfirmDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-sm mx-4">
-            <h3 className="custom-b text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-              Clear Chat History?
-            </h3>
-            <p className="custom-b text-sm text-gray-600 dark:text-gray-400 mb-4">
-              This action cannot be undone. All messages will be permanently
-              deleted.
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={cancelClearChat}
-                className="custom-b px-4 py-2 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmClearChat}
-                className="custom-b px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-              >
-                Clear Chat
-              </button>
-            </div>
-          </div>
+      <dialog
+        ref={dialogRef}
+        onClose={() => setShowConfirmDialog(false)}
+        aria-labelledby="clear-chat-title"
+        className="m-auto rounded-lg p-6 max-w-sm w-[calc(100%-2rem)] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 backdrop:bg-black/50"
+      >
+        <h2 id="clear-chat-title" className="text-lg font-medium mb-2">
+          Delete this conversation?
+        </h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          This removes the conversation and all of its messages from this browser. It
+          cannot be undone.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setShowConfirmDialog(false)}
+            className="px-4 py-2 cursor-pointer text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-500"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={confirmClearChat}
+            className="px-4 py-2 cursor-pointer text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-red-500"
+          >
+            Delete
+          </button>
         </div>
-      )}
+      </dialog>
     </>
   );
 };

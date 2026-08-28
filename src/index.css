@@ -28,6 +28,17 @@
   --text-tertiary: #737373;      /* Muted text */
 }
 
+/* Painted behind the app, so the theme is correct before React mounts. */
+body {
+  background-color: #f9fafb;
+  color: #111827;
+}
+
+.dark body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -107,30 +118,10 @@
   background-color: transparent;
   padding: 0;
   margin: 1em 0;
+  overflow-x: auto;
 }
 
 .prose pre code {
   background-color: transparent;
   padding: 0;
-}
-
-/* Sidebar transitions */
-.sidebar-transition {
-  transition: transform 0.3s ease-in-out;
-}
-
-/* Mobile responsive adjustments */
-@media (max-width: 1024px) {
-  .sidebar-mobile {
-    position: fixed;
-    top: 0;
-    left: 0;
-    height: 100vh;
-    z-index: 50;
-  }
-}
-
-
-.custom-b{
-    cursor: pointer;
 }

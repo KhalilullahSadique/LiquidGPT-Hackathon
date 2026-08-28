@@ -1,160 +1,226 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ChatHeader from "./ChatHeader";
 import logo from "../assets/logo.jfif";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import Sidebar from "./Sidebar";
 import DarkModeToggle from "./DarkModeToggle";
-import { useOpenRouter } from "../hooks/useOpenRouter";
+import ErrorBanner from "./ErrorBanner";
+import { useChat } from "../hooks/useChat";
 import { useDarkMode } from "../hooks/useDarkMode";
 import {
-  saveConversation,
-  getConversation,
-  getAllConversations,
-  setCurrentConversationId,
-  getCurrentConversationId,
+  clearCurrentConversationId,
+  deleteConversation,
   generateConversationId,
+  getAllConversations,
+  getConversation,
+  getCurrentConversationId,
+  saveConversation,
+  setCurrentConversationId,
 } from "../utils/conversationStorage";
-import { DEFAULT_MODEL } from "../constants/models";
+import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../constants/models";
+
+const SELECTED_MODEL_KEY = "liquidgpt-model";
+const STICK_TO_BOTTOM_THRESHOLD_PX = 120;
+
+const loadSelectedModel = () => {
+  try {
+    const saved = localStorage.getItem(SELECTED_MODEL_KEY);
+    // A model that no longer exists in the catalog must not be restored.
+    return AVAILABLE_MODELS.some((model) => model.id === saved) ? saved : DEFAULT_MODEL;
+  } catch {
+    return DEFAULT_MODEL;
+  }
+};
+
+/**
+ * Read the last session straight out of storage for the initial render.
+ *
+ * A pointer with no record means "New Chat was clicked but nothing was sent yet" - an
+ * empty chat is the correct result. The previous version treated that miss as a legacy
+ * migration and loaded the whole conversation index into the message pane.
+ */
+const restoreSession = () => {
+  const savedId = getCurrentConversationId();
+  if (!savedId) return { id: null, messages: [] };
+  const conversation = getConversation(savedId);
+  if (!conversation) return { id: null, messages: [] };
+  return { id: savedId, messages: conversation.messages ?? [] };
+};
+
+const createMessageId = () =>
+  globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
 const ChatContainer = () => {
-  const [messages, setMessages] = useState([]);
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
-  const [currentConversationId, setCurrentConversationIdState] = useState(null);
-  // Default to open on desktop (lg breakpoint is 1024px), closed on mobile
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
-  const { send, isLoading, error, clearError } = useOpenRouter();
+  const [initialSession] = useState(restoreSession);
+  const [messages, setMessages] = useState(initialSession.messages);
+  const [conversations, setConversations] = useState(getAllConversations);
+  const [selectedModel, setSelectedModel] = useState(loadSelectedModel);
+  const [currentConversationId, setCurrentConversationIdState] = useState(
+    initialSession.id,
+  );
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const [storageWarning, setStorageWarning] = useState(null);
+
+  const { send, cancel, isLoading, error, clearError } = useChat();
   const { isDark, toggleDarkMode } = useDarkMode();
+
   const messagesEndRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+  // Lets an in-flight reply tell whether the user has since switched conversations.
+  const conversationIdRef = useRef(initialSession.id);
 
   useEffect(() => {
-    // Try to load current conversation
-    const savedConversationId = getCurrentConversationId();
-    if (savedConversationId) {
-      const conversation = getConversation(savedConversationId);
-      if (conversation && conversation.messages) {
-        setMessages(conversation.messages);
-        setCurrentConversationIdState(savedConversationId);
-      } else {
-        // Fallback to old storage format
-        const savedMessages = localStorage.getItem(
-          "chatgpt-clone-conversations",
-        );
-        if (savedMessages) {
-          try {
-            const parsed = JSON.parse(savedMessages);
-            if (Array.isArray(parsed)) {
-              setMessages(parsed);
-              // Migrate to new format
-              const newId = generateConversationId();
-              saveConversation(newId, parsed);
-              setCurrentConversationIdState(newId);
-              setCurrentConversationId(newId);
-            }
-          } catch (error) {
-            console.warn("Failed to migrate old conversation format:", error);
-          }
-        }
-      }
+    conversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
+
+  /**
+   * Write a new message list to state and to storage in one place.
+   *
+   * Deliberately not an effect: saving is a consequence of a user action, and driving it
+   * from an effect updated the conversation list and the quota warning in a cascading
+   * second render.
+   */
+  const commitMessages = useCallback((conversationId, nextMessages) => {
+    setMessages(nextMessages);
+    const result = saveConversation(conversationId, nextMessages);
+    if (result.ok) {
+      setConversations(getAllConversations());
+      setStorageWarning(null);
+      return;
     }
+    setStorageWarning(
+      result.reason === "quota"
+        ? "Browser storage is full. This chat is no longer being saved - delete some conversations to free space."
+        : "This chat could not be saved to browser storage.",
+    );
   }, []);
 
+  // Follow new messages only when the user is already at the bottom, so reading history
+  // isn't interrupted by an arriving reply.
   useEffect(() => {
-    if (messages.length > 0 && currentConversationId) {
-      saveConversation(currentConversationId, messages);
+    if (stickToBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, currentConversationId]);
+  }, [messages, isLoading]);
 
+  // Keep the overlay sidebar from covering the screen after a rotate or resize.
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    const media = window.matchMedia("(min-width: 1024px)");
+    const handleChange = (event) => setIsSidebarOpen(event.matches);
+    media.addEventListener("change", handleChange);
+    return () => media.removeEventListener("change", handleChange);
+  }, []);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const handleScroll = useCallback((event) => {
+    const { scrollHeight, scrollTop, clientHeight } = event.currentTarget;
+    stickToBottomRef.current =
+      scrollHeight - scrollTop - clientHeight < STICK_TO_BOTTOM_THRESHOLD_PX;
+  }, []);
 
   const handleSendMessage = async (userMessage) => {
-    // Create new conversation if needed
     let conversationId = currentConversationId;
     if (!conversationId) {
       conversationId = generateConversationId();
       setCurrentConversationIdState(conversationId);
+      conversationIdRef.current = conversationId;
       setCurrentConversationId(conversationId);
     }
 
     const userMsg = {
-      id: Date.now(),
+      id: createMessageId(),
       role: "user",
       content: userMessage,
       timestamp: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const history = [
+      ...messages.map((message) => ({ role: message.role, content: message.content })),
+      { role: "user", content: userMessage },
+    ];
+
+    const nextMessages = [...messages, userMsg];
+    stickToBottomRef.current = true;
+    commitMessages(conversationId, nextMessages);
     clearError();
 
     try {
-      const conversationHistory = [
-        ...messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-        { role: "user", content: userMessage },
-      ];
-
-      const aiResponse = await send(conversationHistory, selectedModel);
-
+      const reply = await send(history, selectedModel);
       const aiMsg = {
-        id: Date.now() + 1,
+        id: createMessageId(),
         role: "assistant",
-        content: aiResponse,
+        content: reply.content,
         timestamp: new Date().toISOString(),
+        model: reply.model,
+        usedFallback: reply.usedFallback,
       };
 
-      setMessages((prev) => [...prev, aiMsg]);
-    } catch (err) {
-      const errorMsg = {
-        id: Date.now() + 1,
-        role: "assistant",
-        content: `Error: ${err.message}`,
-        timestamp: new Date().toISOString(),
-        isError: true,
-      };
-
-      setMessages((prev) => [...prev, errorMsg]);
+      if (conversationIdRef.current === conversationId) {
+        commitMessages(conversationId, [...nextMessages, aiMsg]);
+      } else {
+        // The user moved on while this was in flight. Persist the reply where it belongs
+        // rather than dropping it into whatever chat happens to be open now.
+        const origin = getConversation(conversationId);
+        if (origin) {
+          saveConversation(conversationId, [...origin.messages, aiMsg]);
+          setConversations(getAllConversations());
+        }
+      }
+    } catch {
+      // Failures surface in the error banner. They deliberately never enter the transcript:
+      // a stored "Error: ..." bubble is indistinguishable from a real reply and gets
+      // replayed to the model as conversation history on the next turn.
     }
   };
 
   const handleClearChat = () => {
+    if (currentConversationId) deleteConversation(currentConversationId);
     setMessages([]);
     setCurrentConversationIdState(null);
-    localStorage.removeItem("chatgpt-clone-current-conversation");
+    conversationIdRef.current = null;
+    clearCurrentConversationId();
+    setConversations(getAllConversations());
     clearError();
   };
 
+  // No conversation id is minted until the first message, so New Chat cannot leave a
+  // pointer behind that references a record which was never written.
   const handleNewChat = () => {
     setMessages([]);
-    const newId = generateConversationId();
-    setCurrentConversationIdState(newId);
-    setCurrentConversationId(newId);
+    setCurrentConversationIdState(null);
+    conversationIdRef.current = null;
+    clearCurrentConversationId();
     clearError();
   };
 
   const handleConversationSelect = (conversationId) => {
     const conversation = getConversation(conversationId);
-    if (conversation) {
-      setMessages(conversation.messages || []);
-      setCurrentConversationIdState(conversationId);
-      setCurrentConversationId(conversationId);
-      clearError();
-    }
+    if (!conversation) return;
+    setMessages(conversation.messages ?? []);
+    setCurrentConversationIdState(conversationId);
+    conversationIdRef.current = conversationId;
+    setCurrentConversationId(conversationId);
+    stickToBottomRef.current = true;
+    clearError();
   };
 
-  const toggleSidebar = () => {
-    setIsSidebarOpen(!isSidebarOpen);
+  const handleDeleteConversation = (conversationId) => {
+    deleteConversation(conversationId);
+    setConversations(getAllConversations());
+    if (currentConversationId === conversationId) handleNewChat();
   };
+
+  const toggleSidebar = () => setIsSidebarOpen((open) => !open);
 
   const handleModelChange = (newModel) => {
     setSelectedModel(newModel);
+    try {
+      localStorage.setItem(SELECTED_MODEL_KEY, newModel);
+    } catch {
+      // A browser with storage disabled just loses the preference; not worth interrupting.
+    }
   };
 
   return (
@@ -162,12 +228,15 @@ const ChatContainer = () => {
       <Sidebar
         isOpen={isSidebarOpen}
         onToggle={toggleSidebar}
+        conversations={conversations}
         currentConversationId={currentConversationId}
         onConversationSelect={handleConversationSelect}
+        onConversationDelete={handleDeleteConversation}
         onNewChat={handleNewChat}
+        disabled={isLoading}
       />
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <ChatHeader
           selectedModel={selectedModel}
           onModelChange={handleModelChange}
@@ -175,17 +244,21 @@ const ChatContainer = () => {
           onNewChat={handleNewChat}
           onToggleSidebar={toggleSidebar}
           disabled={isLoading}
+          canClear={messages.length > 0}
         >
           <DarkModeToggle isDark={isDark} onToggle={toggleDarkMode} />
         </ChatHeader>
 
-        <div className="flex-1 overflow-y-auto">
+        <div
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto"
+        >
           <div className="max-w-4xl mx-auto px-4 py-6">
             {messages.length === 0 ? (
               <div className="text-center py-12">
                 <img
                   src={logo}
-                  alt="LiquidGPT"
+                  alt=""
                   className="w-24 h-24 mx-auto mb-6 rounded-full object-cover shadow-lg"
                 />
                 <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -203,19 +276,21 @@ const ChatContainer = () => {
               </div>
             ) : (
               <>
-                {messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                    isUser={message.role === "user"}
-                  />
-                ))}
+                <div aria-live="polite" aria-atomic="false">
+                  {messages.map((message) => (
+                    <ChatMessage
+                      key={message.id}
+                      message={message}
+                      isUser={message.role === "user"}
+                    />
+                  ))}
+                </div>
                 {isLoading && (
                   <div className="flex justify-start mb-4">
                     <div className="max-w-3xl mr-12">
                       <div className="px-4 py-3 rounded-2xl bg-gray-100 dark:bg-[var(--bg-tertiary)] text-gray-900 dark:text-[var(--text-primary)]">
                         <div className="flex items-center space-x-2">
-                          <div className="flex space-x-1">
+                          <div className="flex space-x-1" aria-hidden="true">
                             <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                             <div
                               className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
@@ -226,7 +301,10 @@ const ChatContainer = () => {
                               style={{ animationDelay: "0.2s" }}
                             ></div>
                           </div>
-                          <span className="text-sm text-gray-600 dark:text-gray-400">
+                          <span
+                            className="text-sm text-gray-600 dark:text-gray-400"
+                            role="status"
+                          >
                             Thinking...
                           </span>
                         </div>
@@ -240,8 +318,20 @@ const ChatContainer = () => {
           </div>
         </div>
 
+        <div className="max-w-3xl w-full mx-auto px-4 space-y-2">
+          {storageWarning && (
+            <ErrorBanner
+              tone="warning"
+              message={storageWarning}
+              onDismiss={() => setStorageWarning(null)}
+            />
+          )}
+          {error && <ErrorBanner message={error} onDismiss={clearError} />}
+        </div>
+
         <ChatInput
           onSend={handleSendMessage}
+          onCancel={cancel}
           disabled={isLoading}
           isLoading={isLoading}
         />

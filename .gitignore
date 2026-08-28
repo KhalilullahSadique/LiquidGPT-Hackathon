@@ -12,19 +12,27 @@ dist
 dist-ssr
 *.local
 
+# Vercel (.vercel/project.json holds orgId and projectId)
+.vercel
+
+# Browser automation artifacts
+.playwright-mcp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
 
-# Environment variables
+# Environment variables. .env.example is committed on purpose - it documents the
+# variable names a new contributor needs in order to run the app.
 .env
-.env.local
-.env.*.local
-.env.example
+.env.*
+!.env.example

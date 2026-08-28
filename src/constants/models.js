@@ -1,20 +1,47 @@
+/**
+ * Model catalog.
+ *
+ * Every id here is a STABLE slug. Two rules learned the hard way, when all 16 of this
+ * app's previous OpenRouter ids went dead at once:
+ *
+ *   1. Never use an OpenRouter ":free" suffix. It is a billing state with no availability
+ *      contract, not a version alias, and it gets revoked without notice.
+ *   2. Never use a "-preview" id (2 weeks' deprecation notice) or a "-latest" alias
+ *      (hot-swapped underneath you). Pin a specific stable model.
+ *
+ * `openrouter/free` is the exception that proves the rule: it is a router that resolves to
+ * whatever free models are alive today, so unlike a specific ":free" slug it cannot rot.
+ */
 export const AVAILABLE_MODELS = [
-  { id: "arcee-ai/trinity-large-preview:free", name: "Trinity Large" },
-  { id: "openrouter/pony-alpha", name: "Pony Alpha" },
-  { id: "tngtech/deepseek-r1t2-chimera:free", name: "DeepSeek R1-T2" },
-  { id: "stepfun/step-3.5-flash:free", name: "Step 3.5 Flash" },
-  { id: "z-ai/glm-4.5-air:free", name: "GLM 4.5 Air" },
-  { id: "tngtech/deepseek-r1t-chimera:free", name: "DeepSeek R1-T" },
-  { id: "nvidia/nemotron-3-nano-30b-a3b:free", name: "Nemotron Nano 30B" },
-  { id: "deepseek/deepseek-r1-0528:free", name: "DeepSeek R1" },
-  { id: "tngtech/tng-r1t-chimera:free", name: "TNG R1-T" },
-  { id: "openai/gpt-oss-120b:free", name: "GPT OSS 120B" },
-  { id: "qwen/qwen3-coder:free", name: "Qwen3 Coder" },
-  { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B" },
-  { id: "upstage/solar-pro-3:free", name: "Solar Pro 3" },
-  { id: "arcee-ai/trinity-mini:free", name: "Trinity Mini" },
-  { id: "nvidia/nemotron-nano-12b-v2-vl:free", name: "Nemotron Nano 12B VL" },
-  { id: "openrouter/aurora-alpha", name: "Aurora Alpha" }
+  { id: "gemini-3.6-flash", name: "Gemini 3.6 Flash", provider: "gemini" },
+  { id: "gemini-3.5-flash", name: "Gemini 3.5 Flash", provider: "gemini" },
+  { id: "gemini-3.5-flash-lite", name: "Gemini 3.5 Flash-Lite", provider: "gemini" },
+  { id: "gemini-3.1-flash-lite", name: "Gemini 3.1 Flash-Lite", provider: "gemini" },
+  // Newest flagship, but free-tier capacity has been returning 503 consistently.
+  // Kept selectable; the fallback chain covers it when it is unavailable.
+  { id: "gemini-3.7-flash", name: "Gemini 3.7 Flash", provider: "gemini" },
+  { id: "openrouter/free", name: "OpenRouter (Free Router)", provider: "openrouter" },
 ];
 
-export const DEFAULT_MODEL = "deepseek/deepseek-r1-0528:free";
+/**
+ * Google's own stated replacement for gemini-2.5-flash.
+ *
+ * Note for anyone tempted to "restore" a 2.x id here: gemini-2.5-flash, -flash-lite and
+ * -pro all still appear in GET /v1beta/openai/models, but calling them from a new API key
+ * returns 404 "no longer available to new users". The model listing is not proof of
+ * usability - the only reliable test is a real request.
+ */
+export const DEFAULT_MODEL = "gemini-3.6-flash";
+
+/**
+ * Tried in order when the selected model fails. Deliberately spans two providers on
+ * different infrastructure so one outage cannot take the app down.
+ */
+export const FALLBACK_CHAIN = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash-lite",
+  "openrouter/free",
+];
+
+export const getModel = (modelId) =>
+  AVAILABLE_MODELS.find((model) => model.id === modelId) ?? null;

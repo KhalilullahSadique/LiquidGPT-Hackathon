@@ -1,11 +1,12 @@
 import React from "react";
 import ChatContainer from "./components/ChatContainer";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 function App() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-[var(--bg-primary)]">
+    <ErrorBoundary>
       <ChatContainer />
-    </div>
+    </ErrorBoundary>
   );
 }
 
