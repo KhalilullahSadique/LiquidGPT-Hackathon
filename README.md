@@ -3,8 +3,8 @@
 A ChatGPT-style AI chat app built for the SMIT Hackathon by **Khalilullah Sediq**.
 
 React 19 · Vite 7 · Tailwind CSS v4 · Serverless API proxy · Markdown rendering with
-syntax highlighting · Multi-conversation history · Dark mode · Automatic model fallback
-across two providers.
+syntax highlighting · Multi-conversation history · Dark mode · English and Russian interface
+with device-language detection · Automatic model fallback across two providers.
 
 ## Quick start
 
@@ -21,6 +21,17 @@ Open the URL Vite prints (usually <http://localhost:5173>).
 To try it on a phone on the same Wi-Fi, run `npm run dev:host` instead and open the
 Network URL. Note that the browser blocks clipboard access on non-HTTPS origins, so the
 Copy buttons will report "Failed" there — everything else works.
+
+## Language
+
+The interface ships in English and Russian. It picks your device language on first load — a
+phone set to Russian opens in Russian, with no flash of English, because the language is
+resolved before first paint rather than after React mounts. Any `ru-*` locale counts, so
+`ru-RU`, `ru-KZ` and `ru-BY` all work.
+
+You can change it any time from the sidebar footer, and the choice is remembered. The
+assistant answers in whichever language the interface is set to, unless you write to it in
+a different one — then it replies in yours.
 
 ## Getting an API key
 

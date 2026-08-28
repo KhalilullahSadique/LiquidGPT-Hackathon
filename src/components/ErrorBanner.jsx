@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "../i18n/useTranslation";
 
 const TONES = {
   error: {
@@ -14,6 +15,7 @@ const TONES = {
 };
 
 const ErrorBanner = ({ message, onDismiss, tone = "error" }) => {
+  const { t } = useTranslation();
   const styles = TONES[tone] ?? TONES.error;
 
   return (
@@ -41,8 +43,8 @@ const ErrorBanner = ({ message, onDismiss, tone = "error" }) => {
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss message"
-        className={`shrink-0 rounded-lg p-1 cursor-pointer transition-colors focus:outline-hidden focus-visible:ring-2 ${styles.dismiss}`}
+        aria-label={t("banner.dismiss")}
+        className={`shrink-0 rounded-lg p-2.5 min-h-11 min-w-11 cursor-pointer transition-colors focus:outline-hidden focus-visible:ring-2 ${styles.dismiss}`}
       >
         <svg
           className="w-4 h-4"

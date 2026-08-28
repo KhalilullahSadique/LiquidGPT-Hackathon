@@ -1,5 +1,5 @@
 import { PROVIDERS, getApiKey } from "./_providers.js";
-import { SYSTEM_PROMPT } from "./_persona.js";
+import { buildSystemPrompt } from "./_persona.js";
 
 // gemini-3.5-flash has been measured at ~7s, so the platform default of 10s is too tight.
 export const config = { maxDuration: 60 };
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     return fail(res, 400, "Request body must be valid JSON.", "bad_json");
   }
 
-  const { provider: providerId, model, messages } = body;
+  const { provider: providerId, model, messages, language } = body;
 
   const provider = PROVIDERS[providerId];
   if (!provider) {
@@ -111,6 +111,11 @@ export default async function handler(req, res) {
     );
   }
 
+  // Deliberately NOT validated into a 400: an unknown or missing language falls back to
+  // English inside buildSystemPrompt, so a stale cached client that sends nothing keeps
+  // working. A language is a preference, not a precondition.
+  const systemPrompt = buildSystemPrompt(language);
+
   // Strip any client-supplied system messages, then prepend ours. The persona is decided
   // here, not by whatever the browser happened to send.
   const conversation = messages
@@ -129,9 +134,11 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model,
-        messages: [{ role: "system", content: SYSTEM_PROMPT }, ...conversation],
+        messages: [{ role: "system", content: systemPrompt }, ...conversation],
         temperature: 0.7,
-        max_tokens: 2000,
+        // Cyrillic tokenizes roughly twice as coarsely as Latin, so an identical budget cuts
+        // a Russian answer off at about half the visible length. Costs nothing on a free tier.
+        max_tokens: language === "ru" ? 3000 : 2000,
       }),
     });
   } catch (error) {

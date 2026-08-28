@@ -3,7 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/jpeg" href="/src/assets/logo.jfif" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta
       name="description"
       content="LiquidGPT - a multi-model AI chat app with conversation history and dark mode."
@@ -12,8 +15,9 @@
     <meta name="theme-color" content="#f9fafb" media="(prefers-color-scheme: light)" />
     <title>LiquidGPT</title>
     <script>
-      // Runs before first paint so dark-mode users don't get a white flash on every load.
-      // Must stay in sync with src/hooks/useDarkMode.js.
+      // Runs before first paint so dark-mode users don't get a white flash on every load, and
+      // so a Russian-speaking visitor never sees a frame of English.
+      // Must stay in sync with src/hooks/useDarkMode.js and src/i18n/locales.js.
       (function () {
         try {
           var saved = localStorage.getItem("theme");
@@ -23,6 +27,34 @@
           if (dark) document.documentElement.classList.add("dark");
         } catch (error) {
           /* storage disabled: fall through to the light theme */
+        }
+
+        try {
+          var supported = ["en", "ru"];
+          var lang = null;
+          try {
+            lang = localStorage.getItem("liquidgpt-lang");
+          } catch (error) {
+            /* storage disabled: fall through to device detection */
+          }
+
+          if (supported.indexOf(lang) === -1) {
+            var candidates = navigator.languages && navigator.languages.length
+              ? navigator.languages
+              : [navigator.language || "en"];
+            lang = "en";
+            for (var i = 0; i < candidates.length; i++) {
+              // Match on the base subtag so ru-RU, ru-KZ and ru-BY all resolve to Russian.
+              var base = String(candidates[i]).toLowerCase().split("-")[0];
+              if (supported.indexOf(base) !== -1) {
+                lang = base;
+                break;
+              }
+            }
+          }
+          document.documentElement.lang = lang;
+        } catch (error) {
+          /* navigator unavailable: the document keeps the static lang="en" */
         }
       })();
     </script>

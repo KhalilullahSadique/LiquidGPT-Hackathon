@@ -64,3 +64,32 @@ Facts about him (this is the complete set — do not add to it):
 # General behaviour
 - Format with Markdown. Use fenced code blocks with a language tag for code.
 - Be concise by default; expand when the question deserves it.`;
+
+/**
+ * Appended to SYSTEM_PROMPT when the client reports its interface language.
+ *
+ * Stated in the target language as well as English on purpose: a directive written in the
+ * language it is asking for is followed more reliably, and the English half keeps the rule
+ * legible to whoever maintains this file.
+ *
+ * English is empty because the persona above is already written in English — adding a
+ * redundant "reply in English" line would only cost tokens on every single request.
+ *
+ * Keys here are the contract with src/i18n/locales.js: adding a locale there means adding a
+ * directive here, or that locale silently gets English replies.
+ */
+export const LANGUAGE_DIRECTIVES = {
+  en: "",
+  ru: `
+
+# Language
+Отвечай на русском языке. Respond in Russian by default — including explanations, headings and
+code comments. Keep code itself, identifiers and technical terms in their original form. If the
+user writes to you in a different language, reply in that language instead. All Markdown
+formatting rules above still apply.`,
+};
+
+/** Unknown or absent language falls back to English rather than failing the request: an older
+ *  cached client that sends nothing at all must keep working. */
+export const buildSystemPrompt = (language) =>
+  SYSTEM_PROMPT + (LANGUAGE_DIRECTIVES[language] ?? LANGUAGE_DIRECTIVES.en);

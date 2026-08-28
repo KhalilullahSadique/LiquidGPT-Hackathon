@@ -4,7 +4,6 @@ import logo from "../assets/logo.jfif";
 import ChatMessage from "./ChatMessage";
 import ChatInput from "./ChatInput";
 import Sidebar from "./Sidebar";
-import DarkModeToggle from "./DarkModeToggle";
 import ErrorBanner from "./ErrorBanner";
 import { useChat } from "../hooks/useChat";
 import { useDarkMode } from "../hooks/useDarkMode";
@@ -19,6 +18,7 @@ import {
   setCurrentConversationId,
 } from "../utils/conversationStorage";
 import { AVAILABLE_MODELS, DEFAULT_MODEL } from "../constants/models";
+import { useTranslation } from "../i18n/useTranslation";
 
 const SELECTED_MODEL_KEY = "liquidgpt-model";
 const STICK_TO_BOTTOM_THRESHOLD_PX = 120;
@@ -48,6 +48,21 @@ const restoreSession = () => {
   return { id: savedId, messages: conversation.messages ?? [] };
 };
 
+/**
+ * Turn a ChatError into display text.
+ *
+ * A null messageKey means the text came from a provider and is shown verbatim — translating
+ * it would misreport what the server actually said. The one recursion handles the exhausted
+ * chain, so a Russian "all models failed" sentence does not end in an English clause.
+ */
+const describeError = (error, t) => {
+  if (!error) return "";
+  if (!error.messageKey) return error.message ?? "";
+  const params = { ...(error.messageParams ?? {}) };
+  if (error.lastError) params.message = describeError(error.lastError, t);
+  return t(error.messageKey, params);
+};
+
 const createMessageId = () =>
   globalThis.crypto?.randomUUID
     ? globalThis.crypto.randomUUID()
@@ -61,11 +76,12 @@ const ChatContainer = () => {
   const [currentConversationId, setCurrentConversationIdState] = useState(
     initialSession.id,
   );
-  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.innerWidth >= 1024);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
   const [storageWarning, setStorageWarning] = useState(null);
 
   const { send, cancel, isLoading, error, clearError } = useChat();
   const { isDark, toggleDarkMode } = useDarkMode();
+  const { t, lang } = useTranslation();
 
   const messagesEndRef = useRef(null);
   const stickToBottomRef = useRef(true);
@@ -91,10 +107,9 @@ const ChatContainer = () => {
       setStorageWarning(null);
       return;
     }
+    // A key, not a sentence: the banner must follow a later language switch.
     setStorageWarning(
-      result.reason === "quota"
-        ? "Browser storage is full. This chat is no longer being saved - delete some conversations to free space."
-        : "This chat could not be saved to browser storage.",
+      result.reason === "quota" ? "chat.storageFull" : "chat.storageFailed",
     );
   }, []);
 
@@ -147,7 +162,7 @@ const ChatContainer = () => {
     clearError();
 
     try {
-      const reply = await send(history, selectedModel);
+      const reply = await send(history, selectedModel, { language: lang });
       const aiMsg = {
         id: createMessageId(),
         role: "assistant",
@@ -224,7 +239,7 @@ const ChatContainer = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-[var(--bg-primary)]">
+    <div className="flex h-dvh bg-gray-50 dark:bg-[var(--bg-primary)]">
       <Sidebar
         isOpen={isSidebarOpen}
         onToggle={toggleSidebar}
@@ -234,6 +249,8 @@ const ChatContainer = () => {
         onConversationDelete={handleDeleteConversation}
         onNewChat={handleNewChat}
         disabled={isLoading}
+        isDark={isDark}
+        onToggleDarkMode={toggleDarkMode}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
@@ -245,13 +262,11 @@ const ChatContainer = () => {
           onToggleSidebar={toggleSidebar}
           disabled={isLoading}
           canClear={messages.length > 0}
-        >
-          <DarkModeToggle isDark={isDark} onToggle={toggleDarkMode} />
-        </ChatHeader>
+        />
 
         <div
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto"
+          className="flex-1 overflow-y-auto overscroll-contain"
         >
           <div className="max-w-4xl mx-auto px-4 py-6">
             {messages.length === 0 ? (
@@ -262,13 +277,11 @@ const ChatContainer = () => {
                   className="w-24 h-24 mx-auto mb-6 rounded-full object-cover shadow-lg"
                 />
                 <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  Welcome to LiquidGPT
+                  {t("empty.welcome")}
                 </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Start a conversation by typing a message below.
-                </p>
+                <p className="text-gray-600 dark:text-gray-400">{t("empty.body")}</p>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
-                  Developed by{" "}
+                  {t("empty.developedBy")}{" "}
                   <span className="font-semibold text-blue-600 dark:text-blue-400">
                     Khalilullah Sediq
                   </span>
@@ -305,7 +318,7 @@ const ChatContainer = () => {
                             className="text-sm text-gray-600 dark:text-gray-400"
                             role="status"
                           >
-                            Thinking...
+                            {t("chat.thinking")}
                           </span>
                         </div>
                       </div>
@@ -322,11 +335,13 @@ const ChatContainer = () => {
           {storageWarning && (
             <ErrorBanner
               tone="warning"
-              message={storageWarning}
+              message={t(storageWarning)}
               onDismiss={() => setStorageWarning(null)}
             />
           )}
-          {error && <ErrorBanner message={error} onDismiss={clearError} />}
+          {error && (
+            <ErrorBanner message={describeError(error, t)} onDismiss={clearError} />
+          )}
         </div>
 
         <ChatInput

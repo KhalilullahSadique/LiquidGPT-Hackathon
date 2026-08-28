@@ -1,11 +1,14 @@
 import React from 'react';
+import { useTranslation } from '../i18n/useTranslation';
 
 const DarkModeToggle = ({ isDark, onToggle }) => {
+  const { t } = useTranslation();
+
   return (
     <button
       onClick={onToggle}
-      className="p-2 rounded-lg cursor-pointer bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-500 transition-colors"
-      aria-label="Toggle dark mode"
+      className="p-2.5 min-h-11 min-w-11 rounded-lg cursor-pointer bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-gray-500 transition-colors"
+      aria-label={t('theme.toggle')}
     >
       {isDark ? (
         <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

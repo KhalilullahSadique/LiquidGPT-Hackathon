@@ -47,8 +47,12 @@ Two halves that never share a module:
 - **`src/`** runs in the browser. Knows only provider *ids* and *labels*. It cannot leak a
   credential because it never has one.
 
-The browser posts `{provider, model, messages}` to same-origin `/api/chat`;
+The browser posts `{provider, model, messages, language}` to same-origin `/api/chat`;
 `api/chat.js` validates, injects the key, prepends the system prompt, and forwards.
+
+`language` is deliberately **not** validated into a 400. An unknown or absent value falls back
+to English inside `buildSystemPrompt()`, because a stale cached client that sends nothing must
+keep working. A language is a preference, not a precondition.
 
 `vite.config.js` mounts `api/chat.js` on the dev server via `server.middlewares`, so local
 dev runs the *same handler* Vercel runs. Vercel pre-parses JSON into `req.body` but Vite's
@@ -94,6 +98,42 @@ that array falls through on rate limits and downtime, but a model ID that no lon
 `gemini-3.6-flash` takes ~13s on a persona question (extended thinking) and has timed out;
 Flash-Lite answers in ~1s. The default is chosen on measured latency, not model size.
 
+### Interface language
+
+English and Russian, with no i18n dependency — `src/i18n/` is ~150 lines against the ~45 KB
+that react-i18next would have added to an already 460 KB single chunk.
+
+Adding a locale touches **four** places, and the fourth is the one that gets missed because it
+is invisible from the JS:
+
+1. `src/i18n/xx.js` — the dictionary, plus its `suggestions` array.
+2. `src/i18n/translate.js` — add it to `DICTIONARIES` and `SUGGESTIONS`.
+3. `src/i18n/locales.js` — `SUPPORTED_LOCALES` and `LOCALE_LABELS`.
+4. **The inline `supported` array in the pre-paint script in `index.html`.** Miss this and the
+   language cannot be auto-detected and flashes English on every load.
+
+Add a matching entry to `LANGUAGE_DIRECTIVES` in `api/_persona.js` too, or that locale silently
+gets English replies.
+
+Each dictionary is layered as `{...en, ...xx}`, so an untranslated key renders English rather
+than blank. That also makes a missing translation invisible at runtime, which is why
+`translate.js` has a DEV-only module-scope parity check — it is the only place the omission can
+be caught. Keep it at module scope: a `console.warn` inside `t()` would violate
+`react-hooks/purity`.
+
+Numbers interpolate through `Intl.NumberFormat` inside `t()`, and `{count}` selects a plural
+form through `Intl.PluralRules` — Russian needs three forms where English needs two. Do not
+call `toLocaleString` at a call site; that is how the same 2000 limit ended up printed as both
+`2000` and `2 000` in the same panel.
+
+`hasExplicitChoice` is seeded from `readStoredLocale()`, **not** `Boolean(getItem(...))`. A
+stale stored value would otherwise count as a deliberate choice, and the effect would write our
+English fallback back to storage — permanently disabling device detection for that user.
+`useDarkMode` gets away with `Boolean()` only because its key holds nothing but `dark`/`light`.
+
+There is no listener for OS language changes: unlike `prefers-color-scheme`, `navigator.language`
+has no dependable change event. Detection runs once per load, on purpose.
+
 ### State and storage
 
 `ChatContainer` owns **all** conversation state. `Sidebar`, `ChatHeader`, `ChatInput` and
@@ -138,7 +178,10 @@ repo.
   `vite.config.js` and `eslint.config.js` get Node globals and no React rules.
 - Tailwind v4. `bg-opacity-*` and `focus:outline-none` changed meaning from v3 — use
   `bg-black/50` and `focus:outline-hidden` + `focus-visible:ring-*`.
-- The dark theme is applied by an inline script in `index.html` **before first paint**;
+- The inline script in `index.html` resolves **both** the theme and the language before first
+  paint, and writes the language to `<html lang>`. `LanguageProvider` reads it back off the DOM
+  in a lazy initialiser rather than recomputing it, exactly as `useDarkMode` does.
+- The dark theme is applied by that same inline script **before first paint**;
   `useDarkMode` reads the class back off `documentElement` rather than recomputing. Keep the
   two in sync, and only persist `theme` on an explicit user toggle so the OS preference
   still wins by default.
@@ -191,3 +234,30 @@ curl -s -X POST http://localhost:5173/api/chat \
 After a change that touches keys, providers, or the build, confirm: `npm run lint` exits 0,
 `grep -rc "AIzaSy" dist/` is 0, and the browser's network tab shows calls to `/api/chat`
 only — never `googleapis.com` or `openrouter.ai`.
+
+## Mobile invariants
+
+The app is used on phones from a QR code, so these are load-bearing rather than polish:
+
+- **`h-dvh`, never `h-screen`.** `100vh` includes the iOS URL bar and pushes the input bar below
+  the fold. Do not write `h-screen h-dvh` as a "fallback pair" — Tailwind sorts its own output,
+  so the class-attribute order does not decide which wins.
+- **`env(safe-area-inset-*)` does nothing without `viewport-fit=cover`** in the viewport meta.
+  Both are in place; removing either silently reverts the notch and home-indicator padding.
+- **Every interactive control is `min-h-11` / `min-w-11` (44px).** Padding alone does not get
+  there for `text-xs` controls; the message Copy button uses negative margin to grow its hit
+  area without growing the layout.
+- **iOS zooms the page on focus for any control under 16px and never zooms back.** Both
+  `<select>`s and the textarea are `text-base sm:text-sm`. Never "fix" this with
+  `maximum-scale=1` — that breaks pinch-zoom for everyone.
+- **Tailwind emits hover variants inside `@media (hover: hover)`.** On a touch device a
+  `group-hover:` rule is not merely unfired, it is never generated. The sidebar delete button
+  was `opacity-0 group-hover:opacity-100`, which meant there was no way at all to delete a
+  conversation on a phone. Anything hover-revealed must have a touch-visible fallback.
+- **The header does not fit a second `<select>`.** Language and theme live in the sidebar
+  footer because at 320px the model picker overlapped the language picker by 140px. The
+  document did not overflow, so this is invisible to a scrollWidth check — measure element
+  rectangles, not just page width.
+- `Tab` was deliberately removed from `ACCEPT_KEYS` in `ChatInput`. The suggestions are
+  focusable chips now, so swallowing Tab in the empty textarea would trap a keyboard user.
+  Do not add it back.

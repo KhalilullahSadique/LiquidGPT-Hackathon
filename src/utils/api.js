@@ -19,13 +19,35 @@ const BASE_BACKOFF_MS = 600;
 const RETRYABLE_STATUSES = new Set([408, 409, 425, 500, 502, 503, 504]);
 
 export class ChatError extends Error {
-  constructor(message, { status = null, kind = "unknown", code = null, cause = null } = {}) {
+  /**
+   * `message` stays English: it is what lands in the console and in a bug report.
+   *
+   * `messageKey` / `messageParams` are what the UI renders, translated at render time rather
+   * than at throw time — so switching language retranslates an error already on screen, and
+   * this module stays pure and stateless. A null key means "show `message` verbatim", which
+   * is correct for text a provider sent us: translating that would misreport what it said.
+   */
+  constructor(
+    message,
+    {
+      status = null,
+      kind = "unknown",
+      code = null,
+      cause = null,
+      messageKey = null,
+      messageParams = null,
+      lastError = null,
+    } = {},
+  ) {
     super(message);
     this.name = "ChatError";
     this.status = status;
     this.kind = kind;
     this.code = code;
     this.cause = cause;
+    this.messageKey = messageKey;
+    this.messageParams = messageParams;
+    this.lastError = lastError;
   }
 }
 
@@ -36,7 +58,12 @@ const sleep = (ms, signal) =>
       "abort",
       () => {
         clearTimeout(timer);
-        reject(new ChatError("Request cancelled.", { kind: "aborted" }));
+        reject(
+          new ChatError("Request cancelled.", {
+            kind: "aborted",
+            messageKey: "error.cancelled",
+          }),
+        );
       },
       { once: true },
     );
@@ -85,14 +112,20 @@ const extractError = async (response) => {
  */
 const readCompletion = (data) => {
   if (data?.error) {
-    throw new ChatError(data.error.message || "The provider returned an error.", {
+    const providerMessage = data.error.message;
+    throw new ChatError(providerMessage || "The provider returned an error.", {
       kind: "provider",
+      // Only our own fallback wording is translatable; the provider's own text passes through.
+      messageKey: providerMessage ? null : "error.provider",
     });
   }
 
   const choice = Array.isArray(data?.choices) ? data.choices[0] : null;
   if (!choice) {
-    throw new ChatError("The provider returned no completions.", { kind: "malformed" });
+    throw new ChatError("The provider returned no completions.", {
+      kind: "malformed",
+      messageKey: "error.noCompletions",
+    });
   }
 
   const content = choice.message?.content;
@@ -104,14 +137,18 @@ const readCompletion = (data) => {
   if (choice.finish_reason === "length") {
     throw new ChatError("The reply hit the token limit before producing any text.", {
       kind: "truncated",
+      messageKey: "error.truncated",
     });
   }
 
-  throw new ChatError("The provider returned an empty reply.", { kind: "empty" });
+  throw new ChatError("The provider returned an empty reply.", {
+    kind: "empty",
+    messageKey: "error.empty",
+  });
 };
 
 /** One model, up to MAX_ATTEMPTS_PER_MODEL times, retrying only transient failures. */
-const requestModel = async (model, messages, signal) => {
+const requestModel = async (model, messages, { signal, language } = {}) => {
   const label = getProviderLabel(model.provider);
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_MODEL; attempt += 1) {
@@ -125,22 +162,32 @@ const requestModel = async (model, messages, signal) => {
           provider: model.provider,
           model: model.id,
           messages,
+          language,
         }),
       });
     } catch (error) {
       // The caller cancelled: give up immediately, never fall through to another model.
       if (signal?.aborted) {
-        throw new ChatError("Request cancelled.", { kind: "aborted", cause: error });
+        throw new ChatError("Request cancelled.", {
+          kind: "aborted",
+          cause: error,
+          messageKey: "error.cancelled",
+        });
       }
       if (error?.name === "TimeoutError") {
         throw new ChatError(
           `The server did not respond within ${REQUEST_TIMEOUT_MS / 1000}s while calling ${label}.`,
-          { kind: "timeout", cause: error },
+          {
+            kind: "timeout",
+            cause: error,
+            messageKey: "error.timeout",
+            messageParams: { seconds: REQUEST_TIMEOUT_MS / 1000, provider: label },
+          },
         );
       }
       throw new ChatError(
         "Could not reach the LiquidGPT server. Check your connection and try again.",
-        { kind: "network", cause: error },
+        { kind: "network", cause: error, messageKey: "error.network" },
       );
     }
 
@@ -160,7 +207,10 @@ const requestModel = async (model, messages, signal) => {
     throw new ChatError(message, { status: response.status, kind: "http", code });
   }
 
-  throw new ChatError("Exhausted retries.", { kind: "http" });
+  throw new ChatError("Exhausted retries.", {
+    kind: "http",
+    messageKey: "error.exhaustedRetries",
+  });
 };
 
 /**
@@ -174,20 +224,23 @@ const requestModel = async (model, messages, signal) => {
  *
  * @returns {Promise<{content: string, model: string, provider: string, usedFallback: boolean}>}
  */
-export const sendMessage = async (messages, modelId, { signal } = {}) => {
+export const sendMessage = async (messages, modelId, { signal, language } = {}) => {
   const candidates = [modelId, ...FALLBACK_CHAIN.filter((id) => id !== modelId)]
     .map(getModel)
     .filter(Boolean);
 
   if (candidates.length === 0) {
-    throw new ChatError("No usable model is configured.", { kind: "config" });
+    throw new ChatError("No usable model is configured.", {
+      kind: "config",
+      messageKey: "error.noModel",
+    });
   }
 
   const failures = [];
 
   for (const [index, model] of candidates.entries()) {
     try {
-      const content = await requestModel(model, messages, signal);
+      const content = await requestModel(model, messages, { signal, language });
       return {
         content,
         model: model.id,
@@ -206,13 +259,22 @@ export const sendMessage = async (messages, modelId, { signal } = {}) => {
   if (failures.every((error) => error.code === "provider_not_configured")) {
     throw new ChatError(
       "No API key is configured on the server. Add GEMINI_API_KEY to your .env file (or to your Vercel environment variables) and restart.",
-      { kind: "config" },
+      { kind: "config", messageKey: "error.notConfigured" },
     );
   }
 
   const last = failures[failures.length - 1];
   throw new ChatError(
     `All ${candidates.length} model${candidates.length === 1 ? "" : "s"} failed. Last error: ${last?.message ?? "unknown"}`,
-    { status: last?.status ?? null, kind: "exhausted", cause: last },
+    {
+      status: last?.status ?? null,
+      kind: "exhausted",
+      cause: last,
+      messageKey: "error.allFailed",
+      messageParams: { count: candidates.length, message: last?.message ?? "unknown" },
+      // Carried so the renderer can translate the nested cause too, rather than splicing an
+      // English sentence into the middle of a Russian one.
+      lastError: last,
+    },
   );
 };

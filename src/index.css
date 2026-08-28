@@ -32,6 +32,10 @@
 body {
   background-color: #f9fafb;
   color: #111827;
+  /* iOS paints a grey box over every tap target otherwise. The focus-visible rings are the
+     real affordance and they are unaffected. */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 .dark body {
@@ -57,6 +61,7 @@ body {
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -124,4 +129,48 @@ body {
 .prose pre code {
   background-color: transparent;
   padding: 0;
+}
+
+/* GFM tables have no intrinsic width limit, so a wide one from the model would widen the
+   whole page on a phone. `display: block` is what lets a table scroll inside itself. */
+.prose table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin-bottom: 1em;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+}
+
+.dark .prose th,
+.dark .prose td {
+  border-color: var(--border-secondary);
+}
+
+.prose th {
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.dark .prose th {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* A modal <dialog> does not lock background scrolling on iOS Safari: the message list
+   rubber-bands behind the top layer while the confirm dialog is open. */
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
 }
